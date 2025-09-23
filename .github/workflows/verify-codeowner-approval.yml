@@ -109,7 +109,3 @@ jobs:
               context: 'Required Approval',
               description: description.substring(0, 140)
             });
-            
-            if (state === 'failure') {
-              core.setFailed(`Pull request is not approved by a required user.`);
-            }
