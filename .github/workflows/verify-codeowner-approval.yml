@@ -111,7 +111,7 @@
 #             });
 
 
-name: 'Required Approval Workflow'
+name: 'Verify Code Owner Approval'
 
 on:
   pull_request:
@@ -126,20 +126,16 @@ permissions:
 jobs:
   verify-approval:
     runs-on: ubuntu-latest
-    
-    # The name of the job now becomes the name of the check.
-    # We will require this check in the branch protection rule.
     name: 'Required Approval'
-    
+
     env:
-      CODE_OWNERS: 'user1 user2'
+      CODE_OWNERS: 'mateusz-zur-flr user2'
 
     steps:
       - name: 'Verify approval conditions'
         uses: actions/github-script@v7
         with:
           script: |
-            // This script now contains all logic and will either pass or fail the job.
             const authorizedApprovers = (process.env.CODE_OWNERS || '')
               .split(' ')
               .filter(u => u.length > 0)
