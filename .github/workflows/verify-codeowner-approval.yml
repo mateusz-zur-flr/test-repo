@@ -115,7 +115,7 @@ name: 'Verify Code Owner Approval'
 
 on:
   pull_request_review:
-    types: [submitted]
+    types: [dismissed, submitted]
 
 permissions:
   pull-requests: read
