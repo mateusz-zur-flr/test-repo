@@ -124,7 +124,7 @@ permissions:
 jobs:
   verify-approval:
     runs-on: ubuntu-latest
-    name: 'Required Approval'
+    name: 'Required approval by code owner'
 
     env:
       CODE_OWNERS: 'mateusz-zur-flr user2'
