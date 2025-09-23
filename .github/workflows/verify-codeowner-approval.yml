@@ -1,0 +1,99 @@
+name: 'Verify Code Owner Approval'
+
+on:
+  # Run on reviews being submitted to check for new approvals
+  # Also run when PRs are opened, synced, or re-opened to set the initial status
+  pull_request
+
+permissions:
+  pull-requests: read
+  contents: read
+  # This permission is required for the action that sets the status check
+  statuses: write
+
+jobs:
+  verify-approval:
+    runs-on: ubuntu-latest
+    steps:
+      # Step 1: Add a status check to the PR.
+      # It starts in a "pending" state. This is what you'll require in branch protection.
+      # Step 1: Add a pending status check to the PR.
+      # This is the check you will require in your branch protection rule.
+      - name: 'Add initial status check'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.payload.pull_request.head.sha,
+              state: 'pending',
+              context: 'Required Approval',
+              description: 'Checking for required approver...'
+            })
+
+      # Step 2: The simplified logic.
+      # This script checks if one of the hardcoded users has approved the PR.
+      - name: 'Check for required approval'
+        id: verify
+        uses: actions/github-script@v7
+        with:
+          script: |
+            // --- CONFIGURATION ---
+            // List of GitHub usernames who are allowed to approve.
+            // IMPORTANT: Replace 'user1' and 'user2' with the actual GitHub usernames.
+            const authorizedApprovers = ['user1', 'user2'].map(u => u.toLowerCase());
+            
+            // --- SCRIPT LOGIC ---
+            console.log(`Required approvers: ${authorizedApprovers.join(', ')}`);
+            
+            // Get the list of users who have approved the PR
+            const { data: reviews } = await github.rest.pulls.listReviews({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+            });
+            
+            const approvers = new Set(
+              reviews
+                .filter(review => review.state === 'APPROVED')
+                .map(review => review.user.login.toLowerCase())
+            );
+            console.log(`Found approvers: ${[...approvers].join(', ')}`);
+            
+            // Check if at least one approver is in our authorized list
+            let isApprovedByAuthorizedUser = false;
+            for (const approver of approvers) {
+              if (authorizedApprovers.includes(approver)) {
+                isApprovedByAuthorizedUser = true;
+                break;
+              }
+            }
+            
+            console.log(`Is approved by a required user: ${isApprovedByAuthorizedUser}`);
+            return { approved: isApprovedByAuthorizedUser, required: authorizedApprovers.join(' or ') };
+
+      # Step 3: Update the status check based on the result.
+      - name: 'Update status check'
+        uses: actions/github-script@v7
+        if: always() # This ensures this step runs even if the previous one fails
+        with:
+          script: |
+            const result = ${{ steps.verify.outputs.result }};
+            const state = result.approved ? 'success' : 'failure';
+            const description = result.approved 
+              ? 'Approved by a required user.'
+              : `Awaiting approval from: @${result.required}`;
+            
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.payload.pull_request.head.sha,
+              state: state,
+              context: 'Required Approval',
+              description: description.substring(0, 140)
+            });
+            
+            if (state === 'failure') {
+              core.setFailed(`Pull request is not approved by a required user.`);
+            }
