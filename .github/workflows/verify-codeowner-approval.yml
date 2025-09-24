@@ -111,6 +111,66 @@
 #             });
 
 
+# name: 'Verify Code Owner Approval'
+
+# on:
+#   pull_request_review:
+#     types: [dismissed, submitted]
+
+# permissions:
+#   pull-requests: read
+#   statuses: write
+
+# jobs:
+#   verify-approval:
+#     runs-on: ubuntu-latest
+#     name: 'Required approval by code owner'
+
+#     env:
+#       CODE_OWNERS: 'mateusz-zur-flr user2'
+
+#     steps:
+#       - name: 'Verify approval conditions'
+#         uses: actions/github-script@v7
+#         with:
+#           script: |
+#             const authorizedApprovers = (process.env.CODE_OWNERS || '')
+#               .split(' ')
+#               .filter(u => u.length > 0)
+#               .map(u => u.toLowerCase());
+
+#             const prCreator = context.payload.pull_request.user.login.toLowerCase();
+#             const { data: reviews } = await github.rest.pulls.listReviews({
+#               owner: context.repo.owner, repo: context.repo.repo, pull_number: context.issue.number,
+#             });
+#             const approvers = new Set(
+#               reviews.filter(r => r.state === 'APPROVED').map(r => r.user.login.toLowerCase())
+#             );
+            
+#             let isApproved = false;
+#             let failureReason = '';
+            
+#             if (authorizedApprovers.includes(prCreator)) {
+#               if (approvers.size > 0) {
+#                 isApproved = true;
+#               } else {
+#                 failureReason = 'This PR was created by a code owner and requires at least one approval from any team member.';
+#               }
+#             } else {
+#               const codeOwnerApprover = [...approvers].find(a => authorizedApprovers.includes(a));
+#               if (codeOwnerApprover) {
+#                 isApproved = true;
+#               } else {
+#                 failureReason = `This PR requires approval from a designated code owner (@${authorizedApprovers.join(' or @')}).`;
+#               }
+#             }
+
+#             if (!isApproved) {
+#               core.setFailed(failureReason);
+#             } else {
+#               console.log('Approval conditions met!');
+#             }
+
 name: 'Verify Code Owner Approval'
 
 on:
@@ -134,37 +194,84 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
+            // Get configuration from environment variables
             const authorizedApprovers = (process.env.CODE_OWNERS || '')
               .split(' ')
               .filter(u => u.length > 0)
               .map(u => u.toLowerCase());
 
-            const prCreator = context.payload.pull_request.user.login.toLowerCase();
+            // Get context from the event payload
+            const pr = context.payload.pull_request;
+            const prCreator = pr.user.login.toLowerCase();
+            const latestCommitDate = new Date(pr.head.repo.pushed_at);
+
+            console.log(`PR created by: ${prCreator}`);
+            console.log(`Code owners are: ${authorizedApprovers.join(', ')}`);
+            console.log(`Latest commit date: ${latestCommitDate.toISOString()}`);
+
+            // Get all reviews for the pull request
             const { data: reviews } = await github.rest.pulls.listReviews({
-              owner: context.repo.owner, repo: context.repo.repo, pull_number: context.issue.number,
+              owner: context.repo.owner, repo: context.repo.repo, pull_number: pr.number,
             });
-            const approvers = new Set(
-              reviews.filter(r => r.state === 'APPROVED').map(r => r.user.login.toLowerCase())
-            );
-            
+
+            // --- NEW, ROBUST LOGIC ---
+
+            // Step 1: Find the latest, definitive review for each user
+            const latestReviews = new Map();
+            for (const review of reviews) {
+              const user = review.user.login.toLowerCase();
+              const state = review.state.toUpperCase();
+              if (state === 'APPROVED' || state === 'CHANGES_REQUESTED') {
+                latestReviews.set(user, { state: state, date: new Date(review.submitted_at) });
+              }
+            }
+            console.log('Latest review state for each user:', latestReviews);
+
+            // Step 2: Determine the final state based on the table's logic
             let isApproved = false;
             let failureReason = '';
             
+            // Find if there's any active (post-commit) blocking review from a code owner
+            const hasBlockingReview = [...latestReviews.entries()].some(([user, review]) => 
+              authorizedApprovers.includes(user) && review.state === 'CHANGES_REQUESTED'
+            );
+
+            // Find if there's a valid (post-commit) approval
+            const hasValidApproval = ([user, review]) => {
+              return review.state === 'APPROVED' && review.date >= latestCommitDate;
+            };
+
             if (authorizedApprovers.includes(prCreator)) {
-              if (approvers.size > 0) {
+              // SCENARIO: PR created by a code owner
+              // Requires approval from anyone (code owner or developer)
+              const hasAnyoneApproved = [...latestReviews.entries()].some(hasValidApproval);
+              
+              if (hasAnyoneApproved) {
                 isApproved = true;
               } else {
-                failureReason = 'This PR was created by a code owner and requires at least one approval from any team member.';
+                failureReason = 'PR by a code owner requires at least one approval after the last commit.';
               }
             } else {
-              const codeOwnerApprover = [...approvers].find(a => authorizedApprovers.includes(a));
-              if (codeOwnerApprover) {
+              // SCENARIO: PR created by a developer
+              // Requires approval from a code owner
+              const hasCodeOwnerApproved = [...latestReviews.entries()]
+                .filter(([user, review]) => authorizedApprovers.includes(user))
+                .some(hasValidApproval);
+              
+              if (hasCodeOwnerApproved) {
                 isApproved = true;
               } else {
-                failureReason = `This PR requires approval from a designated code owner (@${authorizedApprovers.join(' or @')}).`;
+                failureReason = `Developer PR requires approval from a code owner (@${authorizedApprovers.join(' or @')}) after the last commit.`;
               }
             }
+            
+            // A "CHANGES_REQUESTED" from a code owner always acts as a veto
+            if (hasBlockingReview) {
+              isApproved = false;
+              failureReason = 'A code owner has requested changes, blocking the merge.';
+            }
 
+            // Step 3: Set the final job status
             if (!isApproved) {
               core.setFailed(failureReason);
             } else {
