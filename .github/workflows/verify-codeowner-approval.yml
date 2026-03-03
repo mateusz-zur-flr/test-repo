@@ -28,7 +28,8 @@ jobs:
             // Get context from the event payload
             const pr = context.payload.pull_request;
             const prCreator = pr.user.login.toLowerCase();
-            // const latestCommitDate = new Date(pr.head.repo.pushed_at);
+            const latestCommitDate = new Date(pr.head.repo.pushed_at);
+            /* 
             const { data: commits } = await github.rest.pulls.listCommits({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -37,6 +38,7 @@ jobs:
             const latestCommitDate = new Date(
               commits[commits.length - 1].commit.committer.date
             );
+            */
 
             console.log(`PR created by: ${prCreator}`);
             console.log(`Code owners are: ${authorizedApprovers.join(', ')}`);
