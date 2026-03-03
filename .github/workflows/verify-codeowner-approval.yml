@@ -1,8 +1,10 @@
 name: 'Verify Code Owner Approval'
 
 on:
+  pull_request:
+    types: [opened, synchronize, reopened]
   pull_request_review:
-    types: [dismissed, submitted]
+    types: [submitted, dismissed]
 
 permissions:
   pull-requests: read
@@ -11,7 +13,7 @@ permissions:
 jobs:
   verify-approval:
     runs-on: ubuntu-latest
-    name: 'Required approval by code owner'
+    name: Required approval by code owner
     env:
       CODE_OWNERS: 'jgrabowski-flyr mateusz-zur-flr maar-flyr agata-skrzypek mateusz-zur'
 
@@ -29,7 +31,15 @@ jobs:
             // Get context from the event payload
             const pr = context.payload.pull_request;
             const prCreator = pr.user.login.toLowerCase();
-            const latestCommitDate = new Date(pr.head.repo.pushed_at);
+            // const latestCommitDate = new Date(pr.head.repo.pushed_at);
+            const { data: commits } = await github.rest.pulls.listCommits({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pr.number,
+            });
+            const latestCommitDate = new Date(
+              commits[commits.length - 1].commit.committer.date
+            );
 
             console.log(`PR created by: ${prCreator}`);
             console.log(`Code owners are: ${authorizedApprovers.join(', ')}`);
