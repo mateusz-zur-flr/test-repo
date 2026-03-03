@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     name: 'Required approval by code owner'
     env:
-      CODE_OWNERS: 'jgrabowski-flyr mateusz-zur-flr maar-flyr agata-skrzypek'
+      CODE_OWNERS: 'jgrabowski-flyr mateusz-zur-flr maar-flyr agata-skrzypek mateusz-zur'
 
     steps:
       - name: 'Verify approval conditions'
