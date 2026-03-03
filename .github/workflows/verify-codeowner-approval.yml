@@ -1,176 +1,3 @@
-# name: 'Verify Code Owner Approval'
-
-# on:
-#   # Run on reviews being submitted to check for new approvals
-#   # Also run when PRs are opened, synced, or re-opened to set the initial status
-#   pull_request
-
-# permissions:
-#   pull-requests: read
-#   contents: read
-#   # This permission is required for the action that sets the status check
-#   statuses: write
-
-# jobs:
-#   verify-approval:
-#     runs-on: ubuntu-latest
-
-#     # --- CHANGE 1: DEFINE THE CODE OWNERS LIST HERE ---
-#     # List the required approvers here, separated by spaces.
-#     env:
-#       CODE_OWNERS: 'mateusz-zur-flr user2'
-
-#     steps:
-#       # Step 1: Add a status check to the PR.
-#       # It starts in a "pending" state. This is what you'll require in branch protection.
-#       - name: 'Add initial status check'
-#         uses: actions/github-script@v7
-#         with:
-#           script: |
-#             github.rest.repos.createCommitStatus({
-#               owner: context.repo.owner,
-#               repo: context.repo.repo,
-#               sha: context.payload.pull_request.head.sha,
-#               state: 'pending',
-#               context: 'Required Approval',
-#               description: 'Checking for required approver...'
-#             })
-
-#       # Step 2: This script checks if one of the users has approved the PR.
-#       - name: 'Check for required approval'
-#         id: verify
-#         uses: actions/github-script@v7
-#         with:
-#           script: |
-#             const authorizedApprovers = (process.env.CODE_OWNERS || '')
-#               .split(' ')
-#               .filter(u => u.length > 0)
-#               .map(u => u.toLowerCase());
-            
-#             const prCreator = context.payload.pull_request.user.login.toLowerCase();
-#             console.log(`PR created by: ${prCreator}`);
-#             console.log(`Code owners are: ${authorizedApprovers.join(', ')}`);
-            
-#             const { data: reviews } = await github.rest.pulls.listReviews({
-#               owner: context.repo.owner,
-#               repo: context.repo.repo,
-#               pull_number: context.issue.number,
-#             });
-#             const approvers = new Set(
-#               reviews
-#                 .filter(review => review.state === 'APPROVED')
-#                 .map(review => review.user.login.toLowerCase())
-#             );
-#             console.log(`Found approvers: ${[...approvers].join(', ')}`);
-            
-#             let isApproved = false;
-#             let approvalReason = '';
-            
-#             if (authorizedApprovers.includes(prCreator)) {
-#               console.log('PR creator is a code owner. Any single approval is sufficient.');
-#               if (approvers.size > 0) {
-#                 isApproved = true;
-#                 approvalReason = 'Approved (creator is a code owner).';
-#               } else {
-#                 approvalReason = 'Awaiting any approval (creator is a code owner).';
-#               }
-#             } else {
-#               console.log('PR creator is not a code owner. A code owner must approve.');
-#               for (const approver of approvers) {
-#                 if (authorizedApprovers.includes(approver)) {
-#                   isApproved = true;
-#                   approvalReason = `Approved by code owner: @${approver}.`;
-#                   break;
-#                 }
-#               }
-#               if (!isApproved) {
-#                 approvalReason = `Awaiting approval from: @${authorizedApprovers.join(' or @')}`;
-#               }
-#             }
-            
-#             console.log(`Final approval status: ${isApproved}`);
-#             return { approved: isApproved, reason: approvalReason };
-
-#       # Step 3: Update the status check based on the result.
-#       - name: 'Update status check'
-#         uses: actions/github-script@v7
-#         if: always() # This ensures this step runs even if the previous one fails
-#         with:
-#           script: |
-#             const result = ${{ steps.verify.outputs.result }};
-#             const state = result.approved ? 'success' : 'failure';
-#             const description = result.approved ? result.reason : result.reason;
-            
-#             await github.rest.repos.createCommitStatus({
-#               owner: context.repo.owner,
-#               repo: context.repo.repo,
-#               sha: context.payload.pull_request.head.sha,
-#               state: state,
-#               context: 'Required Approval',
-#               description: description.substring(0, 140)
-#             });
-
-
-# name: 'Verify Code Owner Approval'
-
-# on:
-#   pull_request_review:
-#     types: [dismissed, submitted]
-
-# permissions:
-#   pull-requests: read
-#   statuses: write
-
-# jobs:
-#   verify-approval:
-#     runs-on: ubuntu-latest
-#     name: 'Required approval by code owner'
-
-#     env:
-#       CODE_OWNERS: 'mateusz-zur-flr user2'
-
-#     steps:
-#       - name: 'Verify approval conditions'
-#         uses: actions/github-script@v7
-#         with:
-#           script: |
-#             const authorizedApprovers = (process.env.CODE_OWNERS || '')
-#               .split(' ')
-#               .filter(u => u.length > 0)
-#               .map(u => u.toLowerCase());
-
-#             const prCreator = context.payload.pull_request.user.login.toLowerCase();
-#             const { data: reviews } = await github.rest.pulls.listReviews({
-#               owner: context.repo.owner, repo: context.repo.repo, pull_number: context.issue.number,
-#             });
-#             const approvers = new Set(
-#               reviews.filter(r => r.state === 'APPROVED').map(r => r.user.login.toLowerCase())
-#             );
-            
-#             let isApproved = false;
-#             let failureReason = '';
-            
-#             if (authorizedApprovers.includes(prCreator)) {
-#               if (approvers.size > 0) {
-#                 isApproved = true;
-#               } else {
-#                 failureReason = 'This PR was created by a code owner and requires at least one approval from any team member.';
-#               }
-#             } else {
-#               const codeOwnerApprover = [...approvers].find(a => authorizedApprovers.includes(a));
-#               if (codeOwnerApprover) {
-#                 isApproved = true;
-#               } else {
-#                 failureReason = `This PR requires approval from a designated code owner (@${authorizedApprovers.join(' or @')}).`;
-#               }
-#             }
-
-#             if (!isApproved) {
-#               core.setFailed(failureReason);
-#             } else {
-#               console.log('Approval conditions met!');
-#             }
-
 name: 'Verify Code Owner Approval'
 
 on:
@@ -185,13 +12,12 @@ jobs:
   verify-approval:
     runs-on: ubuntu-latest
     name: 'Required approval by code owner'
-
     env:
-      CODE_OWNERS: 'mateusz-zur-flr user2'
+      CODE_OWNERS: 'jgrabowski-flyr mateusz-zur-flr maar-flyr agata-skrzypek'
 
     steps:
       - name: 'Verify approval conditions'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             // Get configuration from environment variables
@@ -214,8 +40,6 @@ jobs:
               owner: context.repo.owner, repo: context.repo.repo, pull_number: pr.number,
             });
 
-            // --- NEW, ROBUST LOGIC ---
-
             // Step 1: Find the latest, definitive review for each user
             const latestReviews = new Map();
             for (const review of reviews) {
@@ -227,7 +51,7 @@ jobs:
             }
             console.log('Latest review state for each user:', latestReviews);
 
-            // Step 2: Determine the final state based on the table's logic
+            // Step 2: Determine the final state
             let isApproved = false;
             let failureReason = '';
             
